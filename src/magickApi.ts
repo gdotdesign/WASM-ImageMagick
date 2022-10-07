@@ -80,6 +80,7 @@ export function call(inputFiles: MagickInputFile[], command: string[]): Promise<
   // }
 
   const promise = CreatePromiseEvent()
+  const magickWorker = createWorker()
   magickWorkerPromises[magickWorkerPromisesKey] = promise
   magickWorker.postMessage(request)//,transfer)
   magickWorkerPromisesKey++
@@ -183,29 +184,35 @@ function GenerateMagickWorkerText(magickUrl){
   return "var magickJsCurrentPath = '" + magickUrl +"';\n" +
          'importScripts(magickJsCurrentPath);'
 }
-let magickWorker;
-if(currentJavascriptURL.startsWith('http'))
-{
-  // if worker is in a different domain fetch it, and run it
-    magickWorker = new Worker(window.URL.createObjectURL(new Blob([GenerateMagickWorkerText(magickWorkerUrl)])));
-}
-else{
-    magickWorker = new Worker(magickWorkerUrl);
-}
 
 const magickWorkerPromises = {}
 let magickWorkerPromisesKey = 1
 
-// handle responses as they stream in after being outputFiles by image magick
-magickWorker.onmessage = e => {
-  const response = e.data
-  const promise = magickWorkerPromises[response.requestNumber]
-  delete magickWorkerPromises[response.requestNumber]
-  const result = {
-    outputFiles: response.outputFiles,
-    stdout: response.stdout,
-    stderr: response.stderr,
-    exitCode: response.exitCode || 0,
+function createWorker() {
+  let magickWorker;
+
+  if(currentJavascriptURL.startsWith('http'))
+  {
+    // if worker is in a different domain fetch it, and run it
+      magickWorker = new Worker(window.URL.createObjectURL(new Blob([GenerateMagickWorkerText(magickWorkerUrl)])));
   }
-  promise.resolve(result)
+  else{
+      magickWorker = new Worker(magickWorkerUrl);
+  }
+
+  // handle responses as they stream in after being outputFiles by image magick
+  magickWorker.onmessage = e => {
+    const response = e.data
+    const promise = magickWorkerPromises[response.requestNumber]
+    delete magickWorkerPromises[response.requestNumber]
+    const result = {
+      outputFiles: response.outputFiles,
+      stdout: response.stdout,
+      stderr: response.stderr,
+      exitCode: response.exitCode || 0,
+    }
+    promise.resolve(result)
+  }
+
+  return magickWorker;
 }
